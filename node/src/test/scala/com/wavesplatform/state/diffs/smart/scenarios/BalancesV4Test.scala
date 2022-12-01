@@ -15,13 +15,12 @@ import com.wavesplatform.lang.v1.compiler.{ExpressionCompiler, TestCompiler}
 import com.wavesplatform.lang.v1.evaluator.ctx.impl.waves.WavesContext
 import com.wavesplatform.lang.v1.evaluator.ctx.impl.{CryptoContext, PureContext}
 import com.wavesplatform.lang.v1.parser.*
-import com.wavesplatform.lang.v1.traits.Environment
 import com.wavesplatform.settings.{Constants, FunctionalitySettings, TestFunctionalitySettings}
 import com.wavesplatform.state.*
 import com.wavesplatform.state.diffs.*
 import com.wavesplatform.test.*
-import com.wavesplatform.transaction.Asset.*
 import com.wavesplatform.transaction.*
+import com.wavesplatform.transaction.Asset.*
 
 class BalancesV4Test extends PropSpec with WithState {
 
@@ -32,7 +31,8 @@ class BalancesV4Test extends PropSpec with WithState {
   val SetScriptFee: Long      = Constants.UnitsInWave / 1000L
   val SetAssetScriptFee: Long = Constants.UnitsInWave
 
-  val rideV4Activated: FunctionalitySettings = TestFunctionalitySettings.Enabled.copy(preActivatedFeatures = Map(
+  val rideV4Activated: FunctionalitySettings = TestFunctionalitySettings.Enabled.copy(preActivatedFeatures =
+    Map(
       BlockchainFeatures.Ride4DApps.id    -> 0,
       BlockchainFeatures.SmartAccounts.id -> 0,
       BlockchainFeatures.BlockV5.id       -> 0
@@ -113,18 +113,18 @@ class BalancesV4Test extends PropSpec with WithState {
     def assetScript(acc: ByteStr): Script = {
       val ctx = {
         val directives = DirectiveSet(V4, AssetType, Expression).explicitGet()
-        PureContext.build(V4, useNewPowPrecision = true).withEnvironment[Environment] |+|
-          CryptoContext.build(Global, V4).withEnvironment[Environment] |+|
+        PureContext.build(V4, useNewPowPrecision = true) |+|
+          CryptoContext.build(Global, V4) |+|
           WavesContext.build(Global, directives, fixBigScriptField = true)
       }
 
       val script =
         s"""
-          | {-# STDLIB_VERSION 4 #-}
-          | {-# CONTENT_TYPE EXPRESSION #-}
-          | {-# SCRIPT_TYPE ASSET #-}
-          |
-          | assetBalance(Address(base58'$acc'), this.id) == $a && assetBalance(Alias("alias"), this.id) == $a
+           | {-# STDLIB_VERSION 4 #-}
+           | {-# CONTENT_TYPE EXPRESSION #-}
+           | {-# SCRIPT_TYPE ASSET #-}
+           |
+           | assetBalance(Address(base58'$acc'), this.id) == $a && assetBalance(Alias("alias"), this.id) == $a
         """.stripMargin
       val parsedScript = Parser.parseExpr(script).get.value
       ExprScript(V4, ExpressionCompiler(ctx.compilerContext, parsedScript).explicitGet()._1)
@@ -175,18 +175,18 @@ class BalancesV4Test extends PropSpec with WithState {
     def assetScript(acc: ByteStr): Script = {
       val ctx = {
         val directives = DirectiveSet(V4, AssetType, Expression).explicitGet()
-        PureContext.build(V4, useNewPowPrecision = true).withEnvironment[Environment] |+|
-          CryptoContext.build(Global, V4).withEnvironment[Environment] |+|
+        PureContext.build(V4, useNewPowPrecision = true) |+|
+          CryptoContext.build(Global, V4) |+|
           WavesContext.build(Global, directives, fixBigScriptField = true)
       }
 
       val script =
         s"""
-          | {-# STDLIB_VERSION 4 #-}
-          | {-# CONTENT_TYPE EXPRESSION #-}
-          | {-# SCRIPT_TYPE ASSET #-}
-          |
-          | wavesBalance(Address(base58'$acc')).regular == $w
+           | {-# STDLIB_VERSION 4 #-}
+           | {-# CONTENT_TYPE EXPRESSION #-}
+           | {-# SCRIPT_TYPE ASSET #-}
+           |
+           | wavesBalance(Address(base58'$acc')).regular == $w
         """.stripMargin
       val parsedScript = Parser.parseExpr(script).get.value
       ExprScript(V4, ExpressionCompiler(ctx.compilerContext, parsedScript).explicitGet()._1)
@@ -222,12 +222,11 @@ class BalancesV4Test extends PropSpec with WithState {
     val setScript = TxHelpers.setScript(acc1, dappScript(ByteStr(acc2.toAddress.bytes), issue.id()), SetScriptFee)
     val invoke    = TxHelpers.invoke(acc1.toAddress, func = Some("bar"), invoker = acc2, fee = InvokeScriptTxFee)
 
-    assertDiffAndState(Seq(TestBlock.create(genesis :+ issue :+ setScript)), TestBlock.create(Seq(invoke)), rideV4Activated) {
-      case (d, s) =>
-        val error = d.scriptResults(invoke.id()).error
-        error.get.code shouldBe 3
-        error.get.text should include("Transaction is not allowed by script of the asset")
-        s.wavesPortfolio(acc1.toAddress).balance shouldBe w
+    assertDiffAndState(Seq(TestBlock.create(genesis :+ issue :+ setScript)), TestBlock.create(Seq(invoke)), rideV4Activated) { case (d, s) =>
+      val error = d.scriptResults(invoke.id()).error
+      error.get.code shouldBe 3
+      error.get.text should include("Transaction is not allowed by script of the asset")
+      s.wavesPortfolio(acc1.toAddress).balance shouldBe w
     }
   }
 

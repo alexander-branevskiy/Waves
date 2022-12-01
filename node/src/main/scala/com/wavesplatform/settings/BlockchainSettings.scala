@@ -132,8 +132,6 @@ object FunctionalitySettings {
     estimatorSumOverflowFixHeight = 1097419,
     ethInvokePaymentsCheckHeight = 1311110
   )
-
-  val configPath = "waves.blockchain.custom.functionality"
 }
 
 case class GenesisTransactionSettings(recipient: String, amount: Long)

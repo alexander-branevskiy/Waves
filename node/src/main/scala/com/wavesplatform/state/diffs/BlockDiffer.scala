@@ -25,6 +25,22 @@ object BlockDiffer {
 
   val CurrentBlockFeePart: Fraction = Fraction(2, 5)
 
+  private def previousBlockFeePart(transactions: Seq[Transaction]): Either[String, Portfolio] = {
+    var result = Portfolio.empty.asRight[String]
+    transactions.foreach { tx =>
+      result match {
+        case Right(p) =>
+          val pf = Portfolio.build(tx.assetFee)
+          // it's important to combine tx fee fractions (instead of getting a fraction of the combined tx fee)
+          // so that we end up with the same value as when computing per-transaction fee part
+          // during microblock processing below
+          result = pf.minus(pf.multiply(CurrentBlockFeePart)).combine(p)
+        case other => other
+      }
+    }
+    result
+  }
+
   def fromBlock(
       blockchain: Blockchain,
       maybePrevBlock: Option[Block],
@@ -55,15 +71,7 @@ object BlockDiffer {
       if (stateHeight >= sponsorshipHeight) {
         Right(Portfolio(balance = blockchain.carryFee))
       } else if (stateHeight > ngHeight) maybePrevBlock.fold(Portfolio.empty.asRight[String]) { pb =>
-        // it's important to combine tx fee fractions (instead of getting a fraction of the combined tx fee)
-        // so that we end up with the same value as when computing per-transaction fee part
-        // during microblock processing below
-        pb.transactionData
-          .map { t =>
-            val pf = Portfolio.build(t.assetFee)
-            pf.minus(pf.multiply(CurrentBlockFeePart))
-          }
-          .foldM(Portfolio.empty)(_.combine(_))
+        previousBlockFeePart(pb.transactionData)
       }
       else
         Right(Portfolio.empty)
@@ -205,12 +213,13 @@ object BlockDiffer {
       }
   }
 
-  private def patchesDiff(blockchain: Blockchain): Either[String, Diff] = {
-    Seq(CancelAllLeases, CancelLeaseOverflow, CancelInvalidLeaseIn, CancelLeasesToDisabledAliases)
+  private val AllPatches = Seq(CancelAllLeases, CancelLeaseOverflow, CancelInvalidLeaseIn, CancelLeasesToDisabledAliases)
+  private def patchesDiff(blockchain: Blockchain): Either[String, Diff] =
+    AllPatches
+      .filter(_.isDefinedAt(blockchain))
       .foldM(Diff.empty) { case (prevDiff, patch) =>
         patch
           .lift(CompositeBlockchain(blockchain, prevDiff))
           .fold(prevDiff.asRight[String])(prevDiff.combineF)
       }
-  }
 }

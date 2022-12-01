@@ -139,7 +139,7 @@ object WavesEnvironmentBenchmark {
       LevelDBFactory.factory.open(dir, new Options)
     }
 
-    val environment: Environment[Id] = {
+    val environment: Environment[Id] = ???/*{
       val state = LevelDBWriter.readOnly(db, wavesSettings)
       new WavesEnvironment(
         AddressScheme.current.chainId,
@@ -150,7 +150,7 @@ object WavesEnvironmentBenchmark {
         DirectiveSet.contractDirectiveSet,
         ByteStr.empty
       )
-    }
+    }*/
 
     @TearDown
     def close(): Unit = {

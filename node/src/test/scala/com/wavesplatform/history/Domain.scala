@@ -27,6 +27,7 @@ import com.wavesplatform.wallet.Wallet
 import com.wavesplatform.{Application, TestValues, crypto, database}
 import monix.execution.Scheduler.Implicits.global
 import org.iq80.leveldb.DB
+import org.scalactic.source.Position
 import org.scalatest.matchers.should.Matchers.*
 import play.api.libs.json.{JsNull, JsValue, Json}
 
@@ -190,7 +191,7 @@ case class Domain(db: DB, blockchainUpdater: BlockchainUpdaterImpl, levelDBWrite
     lastBlock
   }
 
-  def appendAndCatchError(txs: Transaction*): ValidationError = {
+  def appendAndCatchError(txs: Transaction*)(implicit pos: Position): ValidationError = {
     val block  = createBlock(Block.PlainBlockVersion, txs)
     val result = appendBlockE(block)
     txs.foreach { tx =>
@@ -199,7 +200,7 @@ case class Domain(db: DB, blockchainUpdater: BlockchainUpdaterImpl, levelDBWrite
     result.left.getOrElse(throw new RuntimeException(s"Block appended successfully: $txs"))
   }
 
-  def appendAndAssertFailed(txs: Transaction*): Block = {
+  def appendAndAssertFailed(txs: Transaction*)(implicit pos: Position): Block = {
     val block = createBlock(Block.PlainBlockVersion, txs)
     appendBlockE(block) match {
       case Left(err) =>

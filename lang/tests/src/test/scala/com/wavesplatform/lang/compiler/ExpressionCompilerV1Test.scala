@@ -21,7 +21,6 @@ import com.wavesplatform.lang.v1.parser.BinaryOperation.SUM_OP
 import com.wavesplatform.lang.v1.parser.Expressions.Pos
 import com.wavesplatform.lang.v1.parser.Expressions.Pos.AnyPos
 import com.wavesplatform.lang.v1.parser.{Expressions, Parser}
-import com.wavesplatform.lang.v1.traits.Environment
 import com.wavesplatform.lang.v1.{ContractLimits, FunctionHeader, compiler}
 import com.wavesplatform.lang.{Common, Global}
 import com.wavesplatform.test.*
@@ -309,8 +308,8 @@ class ExpressionCompilerV1Test extends PropSpec {
     val ctx = Monoid
       .combineAll(
         Seq(
-          PureContext.build(V4, useNewPowPrecision = true).withEnvironment[Environment],
-          CryptoContext.build(com.wavesplatform.lang.Global, V4).withEnvironment[Environment],
+          PureContext.build(V4, useNewPowPrecision = true),
+          CryptoContext.build(com.wavesplatform.lang.Global, V4),
           WavesContext.build(
             Global,
             DirectiveSet(V4, Account, Expression).explicitGet(),

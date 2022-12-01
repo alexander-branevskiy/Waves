@@ -186,13 +186,13 @@ abstract class LevelDBWriter private[database] (
     }
     else None
 
-  override protected def loadMaxAddressId(): Long = readOnly(db => db.get(Keys.lastAddressId).getOrElse(0L))
+  override protected def loadMaxAddressId(): Long = writableDB.get(Keys.lastAddressId).getOrElse(0L)
 
   override protected def loadAddressId(address: Address): Option[AddressId] = readOnly(db => db.get(Keys.addressId(address)))
 
   override protected def loadHeight(): Int = LevelDBWriter.loadHeight(writableDB)
 
-  override def safeRollbackHeight: Int = readOnly(_.get(Keys.safeRollbackHeight))
+  override def safeRollbackHeight: Int = writableDB.get(Keys.safeRollbackHeight)
 
   override protected def loadScore(): BigInt = readOnly(db => db.get(Keys.score(db.get(Keys.height))))
 
@@ -220,7 +220,7 @@ abstract class LevelDBWriter private[database] (
     db.fromHistory(Keys.assetScriptHistory(asset), Keys.assetScriptPresent(asset)).flatten.nonEmpty
   }
 
-  override def carryFee: Long = readOnly(_.get(Keys.carryFee(height)))
+  override def carryFee: Long = writableDB.get(Keys.carryFee(height))
 
   override protected def loadAccountData(address: Address, key: String): Option[DataEntry[?]] =
     loadWithFilter(dataKeyFilter, Keys.dataHistory(address, key)) { (ro, history) =>
@@ -276,11 +276,11 @@ abstract class LevelDBWriter private[database] (
     }.orEmpty
 
   override protected def loadApprovedFeatures(): Map[Short, Int] = {
-    readOnly(_.get(Keys.approvedFeatures))
+    writableDB.get(Keys.approvedFeatures)
   }
 
   override protected def loadActivatedFeatures(): Map[Short, Int] = {
-    val stateFeatures = readOnly(_.get(Keys.activatedFeatures))
+    val stateFeatures = writableDB.get(Keys.activatedFeatures)
     stateFeatures ++ settings.functionalitySettings.preActivatedFeatures
   }
 

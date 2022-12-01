@@ -5,25 +5,23 @@ import cats.instances.lazyList.*
 import cats.syntax.either.*
 import cats.syntax.foldable.*
 import com.wavesplatform.lang.directives.values.StdLibVersion
+import com.wavesplatform.lang.miniev.Ev
 import com.wavesplatform.lang.v1.FunctionHeader
 import com.wavesplatform.lang.v1.compiler.Terms.*
 import com.wavesplatform.lang.v1.compiler.Types.CASETYPEREF
-import com.wavesplatform.lang.v1.evaluator.ContextfulNativeFunction.{Extended, Simple}
+import com.wavesplatform.lang.v1.evaluator.ContextfulNativeFunction.Simple
 import com.wavesplatform.lang.v1.evaluator.ContractEvaluator.LogExtraInfo
-import com.wavesplatform.lang.v1.evaluator.EvaluatorV2.logFunc
 import com.wavesplatform.lang.v1.evaluator.EvaluatorV2.LogKeys.*
+import com.wavesplatform.lang.v1.evaluator.EvaluatorV2.logFunc
+import com.wavesplatform.lang.v1.evaluator.ctx.*
 import com.wavesplatform.lang.v1.evaluator.ctx.impl.waves.Bindings
-import com.wavesplatform.lang.v1.evaluator.ctx.{EvaluationContext, LoggedEvaluationContext, NativeFunction, UserFunction}
-import com.wavesplatform.lang.v1.traits.Environment
-import com.wavesplatform.lang.{CommonError, ExecutionError}
+import com.wavesplatform.lang.{CommonError, ExecutionError, miniev}
 import monix.eval.Coeval
-import shapeless.syntax.std.tuple.*
 
 import scala.annotation.tailrec
-import scala.collection.mutable.ListBuffer
 
 class EvaluatorV2(
-    val ctx: LoggedEvaluationContext[Environment, Id],
+    val ctx: LoggedEvaluationContext[Id],
     val stdLibVersion: StdLibVersion,
     val correctFunctionCallScope: Boolean,
     val newMode: Boolean,
@@ -89,20 +87,13 @@ class EvaluatorV2(
           if (limit < cost) {
             EvaluationResult(limit)
           } else
-            doEvaluateNativeFunction(fc, function.asInstanceOf[NativeFunction[Environment]], limit, cost)
+            doEvaluateNativeFunction(fc, function.asInstanceOf[NativeFunction], limit, cost)
       } yield result
 
-    def doEvaluateNativeFunction(fc: FUNCTION_CALL, function: NativeFunction[Environment], limit: Int, cost: Int): EvaluationResult[Int] = {
+    def doEvaluateNativeFunction(fc: FUNCTION_CALL, function: NativeFunction, limit: Int, cost: Int): EvaluationResult[Int] = {
       val args = fc.args.asInstanceOf[List[EVALUATED]]
       val evaluation = function.ev match {
-        case f: Extended[Environment] =>
-          f.evaluate[Id](ctx.ec.environment, args, limit - cost).map { case (result, unusedComplexity) =>
-            result.map { case (evaluated, log) =>
-              log.foreach { case (logItemName, logItemValue) => ctx.log(LET(logItemName, TRUE), logItemValue) }
-              evaluated
-            } -> unusedComplexity
-          }
-        case f: Simple[Environment] => Coeval((f.evaluate(ctx.ec.environment, args), limit - cost))
+        case f: Simple => Coeval((f.evaluate(ctx.ec.environment, args), limit - cost))
       }
       for {
         (result, unusedComplexity) <- EvaluationResult(
@@ -128,7 +119,7 @@ class EvaluatorV2(
     def evaluateUserFunction(fc: FUNCTION_CALL, limit: Int, name: String, startArgs: List[EXPR]): Option[EvaluationResult[Int]] =
       ctx.ec.functions
         .get(fc.function)
-        .map(_.asInstanceOf[UserFunction[Environment]])
+        .map(_.asInstanceOf[UserFunction])
         .map { f =>
           val func = FUNC(f.name, f.args.toList, f.ev[Id](ctx.ec.environment, startArgs))
           val precalculatedLimit =
@@ -342,32 +333,21 @@ class EvaluatorV2(
 }
 
 object EvaluatorV2 {
-  def applyLimitedCoeval(
+  def applyLimited(
       expr: EXPR,
       logExtraInfo: LogExtraInfo,
       limit: Int,
-      ctx: EvaluationContext[Environment, Id],
+      ctx: EvaluationContext[Id],
       stdLibVersion: StdLibVersion,
       correctFunctionCallScope: Boolean,
       newMode: Boolean,
       checkConstructorArgsTypes: Boolean = false
-  ): Coeval[Either[(ExecutionError, Int, Log[Id]), (EXPR, Int, Log[Id])]] = {
-    val log       = ListBuffer[LogItem[Id]]()
-    val loggedCtx = LoggedEvaluationContext[Environment, Id](name => value => log.append((name, value)), ctx)
-    var ref       = expr.deepCopy.value
-    logCall(loggedCtx, logExtraInfo, ref)
-    new EvaluatorV2(loggedCtx, stdLibVersion, correctFunctionCallScope, newMode, checkConstructorArgsTypes)
-      .root(ref, v => EvaluationResult { ref = v }, limit, Nil)
-      .map((ref, _))
-      .value
-      .redeem(
-        e => Left((e.getMessage, limit, log.toList)),
-        _.bimap(_ :+ log.toList, _ :+ log.toList)
-      )
+  ) = {
+    Ev.run(expr, ctx, miniev.ComplexityLimit.Complete(limit), newMode, stdLibVersion)
   }
 
   def applyOrDefault(
-      ctx: EvaluationContext[Environment, Id],
+      ctx: EvaluationContext[Id],
       expr: EXPR,
       logExtraInfo: LogExtraInfo,
       stdLibVersion: StdLibVersion,
@@ -377,20 +357,10 @@ object EvaluatorV2 {
       handleExpr: EXPR => Either[ExecutionError, EVALUATED]
   ): (Log[Id], Int, Either[ExecutionError, EVALUATED]) =
     EvaluatorV2
-      .applyLimitedCoeval(expr, logExtraInfo, complexityLimit, ctx, stdLibVersion, correctFunctionCallScope, newMode)
-      .value()
-      .fold(
-        { case (error, complexity, log) => (log, complexity, Left(error)) },
-        { case (result, complexity, log) =>
-          result match {
-            case evaluated: EVALUATED => (log, complexity, Right(evaluated))
-            case expr: EXPR           => (log, complexity, handleExpr(expr))
-          }
-        }
-      )
+      .applyLimited(expr, logExtraInfo, complexityLimit, ctx, stdLibVersion, correctFunctionCallScope, newMode)
 
   def applyCompleted(
-      ctx: EvaluationContext[Environment, Id],
+      ctx: EvaluationContext[Id],
       expr: EXPR,
       logExtraInfo: LogExtraInfo,
       stdLibVersion: StdLibVersion,
@@ -408,7 +378,7 @@ object EvaluatorV2 {
       expr => Left(s"Unexpected incomplete evaluation result $expr")
     )
 
-  private def logCall(loggedCtx: LoggedEvaluationContext[Environment, Id], logExtraInfo: LogExtraInfo, exprCopy: EXPR): Unit = {
+  private def logCall(loggedCtx: LoggedEvaluationContext[Id], logExtraInfo: LogExtraInfo, exprCopy: EXPR): Unit = {
     @tailrec
     def findInvArgLet(expr: EXPR, let: LET): Option[LET] = {
       expr match {
@@ -433,7 +403,7 @@ object EvaluatorV2 {
     }
   }
 
-  private def logFunc(fc: FUNCTION_CALL, ctx: LoggedEvaluationContext[Environment, Id], stdLibVersion: StdLibVersion, limit: Int): Unit = {
+  private def logFunc(fc: FUNCTION_CALL, ctx: LoggedEvaluationContext[Id], stdLibVersion: StdLibVersion, limit: Int): Unit = {
     val func     = ctx.ec.functions.get(fc.function)
     val funcName = func.map(_.name).getOrElse(fc.function.funcName)
     func match {
@@ -449,7 +419,7 @@ object EvaluatorV2 {
     }
   }
 
-  private def logFuncArgs(fc: FUNCTION_CALL, name: String, ctx: LoggedEvaluationContext[Environment, Id]): Unit = {
+  private def logFuncArgs(fc: FUNCTION_CALL, name: String, ctx: LoggedEvaluationContext[Id]): Unit = {
     val argsArr = ARR(fc.args.collect { case arg: EVALUATED => arg }.toIndexedSeq, false)
     argsArr.foreach(_ => ctx.log(LET(s"$name.$Args", TRUE), argsArr))
   }

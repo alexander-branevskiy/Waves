@@ -1,8 +1,8 @@
 package com.wavesplatform.lang.v1.evaluator
 
+import cats.syntax.either.*
 import cats.{Monad, StackSafeMonad}
-import cats.syntax.either._
-import com.wavesplatform.lang.{ExecutionError, CommonError}
+import com.wavesplatform.lang.{CommonError, ExecutionError}
 import monix.eval.Coeval
 
 case class EvaluationResult[+A](value: Coeval[Either[(ExecutionError, Int), A]]) {

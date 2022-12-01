@@ -63,7 +63,7 @@ package object utils {
     ): Coeval[(Either[ValidationError, (EVALUATED, Log[Id])], Int)] = ???
   }
 
-  val lazyContexts: Map[(DirectiveSet, Boolean, Boolean), Coeval[CTX[Environment]]] =
+  val lazyContexts: Map[(DirectiveSet, Boolean, Boolean), Coeval[CTX]] =
     (for {
       version     <- DirectiveDictionary[StdLibVersion].all
       scriptType  <- DirectiveDictionary[ScriptType].all
@@ -73,8 +73,8 @@ package object utils {
     } yield {
       val ds = DirectiveSet(version, scriptType, contentType).explicitGet()
       val ctx = Coeval.evalOnce(
-        PureContext.build(version, useNewPowPrecision).withEnvironment[Environment] |+|
-          CryptoContext.build(Global, version).withEnvironment[Environment] |+|
+        PureContext.build(version, useNewPowPrecision) |+|
+          CryptoContext.build(Global, version) |+|
           WavesContext.build(Global, ds, fixBigScriptField)
       )
       (ds, useNewPowPrecision, fixBigScriptField) -> ctx
@@ -97,7 +97,7 @@ package object utils {
           (ds.stdLibVersion, functions())
     }
 
-  private val combinedContext: Map[(StdLibVersion, ContentType), CTX[Environment]] =
+  private val combinedContext: Map[(StdLibVersion, ContentType), CTX] =
     lazyContexts
       .groupBy { case (ds, _) =>
         (ds._1.stdLibVersion, ds._1.contentType)
@@ -107,7 +107,7 @@ package object utils {
         _.toList
           .map(_._2)
           .sequence
-          .map(Monoid.combineAll[CTX[Environment]])()
+          .map(Monoid.combineAll[CTX])()
       )
       .toMap
 
@@ -145,7 +145,7 @@ package object utils {
   def combinedFunctionCosts(ds: DirectiveSet): Map[FunctionHeader, Coeval[Long]] =
     combinedFunctionCosts((ds.stdLibVersion, ds.contentType))
 
-  def estimate(version: StdLibVersion, ctx: EvaluationContext[Environment, Id]): Map[FunctionHeader, Coeval[Long]] = {
+  def estimate(version: StdLibVersion, ctx: EvaluationContext[Id]): Map[FunctionHeader, Coeval[Long]] = {
     val costs: mutable.Map[FunctionHeader, Coeval[Long]] = mutable.Map.from(ctx.typeDefs.collect {
       case (typeName, CASETYPEREF(_, fields, hidden)) if (!hidden || version < V4) => FunctionHeader.User(typeName) -> Coeval.now(fields.size.toLong)
     })
@@ -158,7 +158,7 @@ package object utils {
     costs.toMap
   }
 
-  def ctx(version: Int, isTokenContext: Boolean, isContract: Boolean): CTX[Environment] = {
+  def ctx(version: Int, isTokenContext: Boolean, isContract: Boolean): CTX = {
     val ds = DirectiveSet(
       DirectiveDictionary[StdLibVersion].idMap(version),
       ScriptType.isAssetScript(isTokenContext),

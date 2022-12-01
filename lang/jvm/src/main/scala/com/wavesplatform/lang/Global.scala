@@ -105,13 +105,13 @@ object Global extends BaseGlobal {
       } else {
         BigDecimalMath.pow(baseBD, expBD, context)
       }
-      if (useNewPrecision)
+      (if (useNewPrecision)
         setScale(resultPrecision, round, context.getPrecision, result)
       else {
-        val value = result.setScale(resultPrecision.toInt, round.mode).unscaledValue
+        val value = result.setScale(resultPrecision, round.mode).unscaledValue
         Right(BigInt(value))
-      }
-    }.flatten.map(_.bigInteger.longValueExact())
+      }).map(_.bigInteger.longValueExact())
+    }.flatten
 
   def log(b: Long, bp: Long, e: Long, ep: Long, rp: Long, round: Rounding): Either[String, Long] =
     tryEither {
@@ -127,8 +127,6 @@ object Global extends BaseGlobal {
     tryEither {
       val base    = toJBig(b, bp)
       val exp     = toJBig(e, ep)
-
-
 
       val context = if (useNewPrecision) bigMathContext else oldBigMathContext
       val res = if (exp == BigDecimal(0.5).bigDecimal) {

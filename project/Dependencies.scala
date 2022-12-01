@@ -104,6 +104,8 @@ object Dependencies {
     )
   }
 
+  val scalaLogging: ModuleID = "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5"
+
   lazy val node = Def.setting(
     Seq(
       ("org.rudogma"       %%% "supertagged"              % "2.0-RC2").exclude("org.scala-js", "scalajs-library_2.13"),
@@ -127,7 +129,7 @@ object Dependencies {
       kindProjector,
       monixModule("reactive").value,
       nettyHandler,
-      "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5",
+      scalaLogging,
       "eu.timepit"                 %% "refined"       % "0.10.1",
       "com.esaulpaugh"              % "headlong"      % "9.0.0",
       web3jModule("abi"),

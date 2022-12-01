@@ -676,9 +676,9 @@ class BlockchainUpdaterImpl(
   }
 
   override def balanceSnapshots(address: Address, from: Int, to: Option[BlockId]): Seq[BalanceSnapshot] = readLock {
-    to.fold(ngState.map(_.bestLiquidDiff))(id => ngState.map(_.diffFor(id)._1))
-      .fold[Blockchain](leveldb)(CompositeBlockchain(leveldb, _))
-      .balanceSnapshots(address, from, to)
+    to.flatMap(id => ngState.flatMap(_.totalDiffOf(id))).fold[Blockchain](leveldb) {
+      case (block, diff, _, _, _) => CompositeBlockchain(leveldb, diff, block, ByteStr.empty, 0L, None)
+    }.balanceSnapshots(address, from, to)
   }
 
   override def accountScript(address: Address): Option[AccountScriptInfo] = readLock {

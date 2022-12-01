@@ -4,25 +4,23 @@ import cats.kernel.Monoid
 import com.wavesplatform.common.state.ByteStr
 import com.wavesplatform.common.utils.EitherExt2
 import com.wavesplatform.lang.directives.DirectiveSet
-import com.wavesplatform.lang.directives.values._
+import com.wavesplatform.lang.directives.values.*
 import com.wavesplatform.lang.v1.FunctionHeader.User
-import com.wavesplatform.lang.v1.compiler.Terms._
+import com.wavesplatform.lang.v1.compiler.Terms.*
 import com.wavesplatform.lang.v1.estimator.ScriptEstimator
-import com.wavesplatform.lang.v1.evaluator.ctx.impl.waves._
+import com.wavesplatform.lang.v1.evaluator.ctx.impl.waves.*
 import com.wavesplatform.lang.v1.evaluator.ctx.impl.{CryptoContext, PureContext}
-import com.wavesplatform.lang.v1.traits.Environment
 import com.wavesplatform.lang.v1.{CTX, FunctionHeader}
 import com.wavesplatform.lang.{Global, utils}
-import com.wavesplatform.state.diffs.smart.predef.chainId
 import com.wavesplatform.test.PropSpec
 import com.wavesplatform.transaction.smart.WavesEnvironment
 import com.wavesplatform.utils.EmptyBlockchain
 import monix.eval.Coeval
 
 class UserFunctionComplexityTest(estimator: ScriptEstimator) extends PropSpec {
-  private val environment = new WavesEnvironment(chainId, Coeval(???), null, EmptyBlockchain, null, DirectiveSet.contractDirectiveSet, ByteStr.empty)
+  private val environment = WavesEnvironment(null, null, ByteStr.empty, DirectiveSet.contractDirectiveSet, EmptyBlockchain)
 
-  private def estimate(expr: EXPR, ctx: CTX[Environment], funcCosts: Map[FunctionHeader, Coeval[Long]]): Either[String, Long] = {
+  private def estimate(expr: EXPR, ctx: CTX, funcCosts: Map[FunctionHeader, Coeval[Long]]): Either[String, Long] = {
     estimator(ctx.evaluationContext(environment).letDefs.keySet, funcCosts, expr)
   }
 
@@ -31,8 +29,8 @@ class UserFunctionComplexityTest(estimator: ScriptEstimator) extends PropSpec {
     Monoid
       .combineAll(
         Seq(
-          PureContext.build(V1, useNewPowPrecision = true).withEnvironment[Environment],
-          CryptoContext.build(Global, V1).withEnvironment[Environment],
+          PureContext.build(V1, useNewPowPrecision = true),
+          CryptoContext.build(Global, V1),
           WavesContext.build(
             Global,
             DirectiveSet(V1, Account, Expression).explicitGet(),
@@ -98,8 +96,8 @@ class UserFunctionComplexityTest(estimator: ScriptEstimator) extends PropSpec {
     Monoid
       .combineAll(
         Seq(
-          PureContext.build(V2, useNewPowPrecision = true).withEnvironment[Environment],
-          CryptoContext.build(Global, V2).withEnvironment[Environment],
+          PureContext.build(V2, useNewPowPrecision = true),
+          CryptoContext.build(Global, V2),
           WavesContext.build(
             Global,
             DirectiveSet(V2, Account, Expression).explicitGet(),
@@ -165,8 +163,8 @@ class UserFunctionComplexityTest(estimator: ScriptEstimator) extends PropSpec {
     Monoid
       .combineAll(
         Seq(
-          PureContext.build(V3, useNewPowPrecision = true).withEnvironment[Environment],
-          CryptoContext.build(Global, V3).withEnvironment[Environment],
+          PureContext.build(V3, useNewPowPrecision = true),
+          CryptoContext.build(Global, V3),
           WavesContext.build(
             Global,
             DirectiveSet(V3, Account, Expression).explicitGet(),

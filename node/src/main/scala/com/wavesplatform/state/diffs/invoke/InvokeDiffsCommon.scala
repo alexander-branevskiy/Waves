@@ -665,7 +665,7 @@ object InvokeDiffsCommon {
         .flatMap(d => TracedResult(curDiff.combineF(d)).leftMap(GenericError(_)))
     }
 
-  private def validatePseudoTxWithSmartAssetScript(blockchain: Blockchain, tx: InvokeScriptLike)(
+  def validatePseudoTxWithSmartAssetScript(blockchain: Blockchain, tx: InvokeScriptLike)(
       pseudoTx: PseudoTx,
       assetId: ByteStr,
       nextDiff: Diff,
@@ -700,6 +700,13 @@ object InvokeDiffsCommon {
         )
       case Success(s) => s
     }
+
+  case class ActionCount(
+      asset: Int,
+      balance: Int,
+      data: Int,
+      dataSize: Int
+  )
 
   def checkCallResultLimits(
       version: StdLibVersion,
@@ -740,7 +747,7 @@ object InvokeDiffsCommon {
     } else if (version >= V6 && assetActionsCount > availableAssetActions) {
       error("Issue, Reissue, Burn, SponsorFee actions count limit is exceeded")
     } else if (version < V6 && actionsCount > availableActions)
-      error("Actions count limit is exceeded")
+      error(s"Actions count limit is exceeded ($actionsCount > $availableActions for $version)")
     else
       TracedResult(Right(()))
   }

@@ -217,7 +217,7 @@ object Decompiler {
           .flatMap(m =>
             (m.group(1), m.group(2)) match {
               case ("User", name) => Some(User(name))
-              case ("Native", id) => Try(id.toShort).toOption.map(Native)
+              case ("Native", id) => Try(id.toShort).toOption.map(s => Native(s))
               case _              => None
             }
           )

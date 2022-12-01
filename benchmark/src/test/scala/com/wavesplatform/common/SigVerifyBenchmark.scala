@@ -24,6 +24,10 @@ class SigVerifyBenchmark {
     bh.consume(Curve25519.verify(st.signature, st.message, st.publicKey))
 
   @Benchmark
+  def sigVerify_1Kb_prov(st: CurveSt1Kb, bh: Blackhole): Unit =
+    bh.consume(com.wavesplatform.curve25519.Provider.verifySignature(st.publicKey, st.message, st.signature))
+
+  @Benchmark
   def sigVerify_5Kb(st: CurveSt5Kb, bh: Blackhole): Unit =
     bh.consume(Curve25519.verify(st.signature, st.message, st.publicKey))
 
@@ -42,6 +46,10 @@ class SigVerifyBenchmark {
   @Benchmark
   def sigVerify_16Kb(st: CurveSt16Kb, bh: Blackhole): Unit =
     bh.consume(Curve25519.verify(st.signature, st.message, st.publicKey))
+
+  @Benchmark
+  def sigVerify_16Kb_prov(st: CurveSt16Kb, bh: Blackhole): Unit =
+    bh.consume(com.wavesplatform.curve25519.Provider.verifySignature(st.publicKey, st.message, st.signature))
 
   @Benchmark
   def sigVerify_32Kb(st: CurveSt32Kb, bh: Blackhole): Unit =

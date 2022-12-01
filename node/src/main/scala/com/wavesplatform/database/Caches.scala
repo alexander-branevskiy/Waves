@@ -104,7 +104,8 @@ abstract class Caches(spendableBalanceChanged: Observer[(Address, Asset)]) exten
   protected def discardVolumeAndFee(orderId: ByteStr): Unit       = volumeAndFeeCache.invalidate(orderId)
   override def filledVolumeAndFee(orderId: ByteStr): VolumeAndFee = volumeAndFeeCache.get(orderId)
 
-  private val scriptCache: LoadingCache[Address, Option[AccountScriptInfo]] = cache(dbSettings.maxCacheSize, loadScript)
+  private val scriptCache: LoadingCache[Address, Option[AccountScriptInfo]] =
+    weighingCache(256 * 1L << 20, (_, v) => v.fold(0)(_.script.bytes().size), loadScript)
   protected def loadScript(address: Address): Option[AccountScriptInfo]
   protected def hasScriptBytes(address: Address): Boolean
   protected def discardScript(address: Address): Unit = scriptCache.invalidate(address)
@@ -344,11 +345,29 @@ abstract class Caches(spendableBalanceChanged: Observer[(Address, Asset)]) exten
 }
 
 object Caches {
-  def cache[K <: AnyRef, V <: AnyRef](maximumSize: Int, loader: K => V): LoadingCache[K, V] =
+  def weighingCache[K <: AnyRef, V <: AnyRef](
+      maximumWeight: Long,
+      weigher: (K, V) => Int,
+      loader: K => V
+  ): LoadingCache[K, V] =
+    CacheBuilder
+      .newBuilder()
+      .maximumWeight(maximumWeight)
+      .softValues()
+      .weigher((key: K, value: V) => weigher(key, value))
+      .recordStats()
+      .build[K, V](new CacheLoader[K, V] {
+        override def load(key: K): V = loader(key)
+      })
+
+  def cache[K <: AnyRef, V <: AnyRef](
+      maximumSize: Int,
+      loader: K => V
+  ): LoadingCache[K, V] =
     CacheBuilder
       .newBuilder()
       .maximumSize(maximumSize)
-      .build(new CacheLoader[K, V] {
+      .build[K, V](new CacheLoader[K, V] {
         override def load(key: K): V = loader(key)
       })
 

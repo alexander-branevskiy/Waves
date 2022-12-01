@@ -5,6 +5,7 @@ import java.nio.ByteBuffer
 import java.util.Map as JMap
 
 import com.google.common.base.Charsets.UTF_8
+import com.google.common.collect.{Interners, Maps}
 import com.google.common.io.ByteStreams.{newDataInput, newDataOutput}
 import com.google.common.io.{ByteArrayDataInput, ByteArrayDataOutput}
 import com.google.common.primitives.{Bytes, Ints, Longs}
@@ -530,16 +531,18 @@ package object database {
       )
     )
 
+  private val scriptInterner = Interners.newWeakInterner[AccountScriptInfo]()
+
   def readAccountScriptInfo(b: Array[Byte]): AccountScriptInfo = {
     val asi = pb.AccountScriptInfo.parseFrom(b)
-    AccountScriptInfo(
+    scriptInterner.intern(AccountScriptInfo(
       PublicKey(asi.publicKey.toByteArray),
       ScriptReader.fromBytes(asi.scriptBytes.toByteArray).explicitGet(),
       asi.maxComplexity,
       asi.callableComplexity.map { c =>
         c.version -> c.callableComplexity
       }.toMap
-    )
+    ))
   }
 
   def readTransaction(height: Height)(b: Array[Byte]): (TxMeta, Transaction) = {

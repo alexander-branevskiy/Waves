@@ -7,18 +7,17 @@ import cats.kernel.Monoid
 import com.wavesplatform.common.state.ByteStr
 import com.wavesplatform.common.utils.{Base58, EitherExt2}
 import com.wavesplatform.crypto.Curve25519
-import com.wavesplatform.lang.Global
 import com.wavesplatform.lang.directives.values.{V1, V4}
 import com.wavesplatform.lang.v1.EnvironmentFunctionsBenchmark.{curve25519, randomBytes}
 import com.wavesplatform.lang.v1.FunctionHeader.Native
 import com.wavesplatform.lang.v1.ScriptEvaluatorBenchmark.*
 import com.wavesplatform.lang.v1.compiler.Terms.*
-import com.wavesplatform.lang.v1.evaluator.Contextful.NoContext
 import com.wavesplatform.lang.v1.evaluator.EvaluatorV1.*
 import com.wavesplatform.lang.v1.evaluator.FunctionIds.{FROMBASE58, SIGVERIFY, TOBASE58}
 import com.wavesplatform.lang.v1.evaluator.ctx.EvaluationContext
 import com.wavesplatform.lang.v1.evaluator.ctx.impl.{CryptoContext, PureContext}
 import com.wavesplatform.lang.v1.evaluator.{EvaluatorV1, FunctionIds}
+import com.wavesplatform.lang.{Common, Global}
 import org.openjdk.jmh.annotations.*
 import org.openjdk.jmh.infra.Blackhole
 
@@ -26,9 +25,9 @@ import scala.util.Random
 
 object ScriptEvaluatorBenchmark {
   val version = V1
-  val pureEvalContext: EvaluationContext[NoContext, Id] =
-    PureContext.build(V1, useNewPowPrecision = true).evaluationContext
-  val evaluatorV1: EvaluatorV1[Id, NoContext] = new EvaluatorV1[Id, NoContext]()
+  val pureEvalContext: EvaluationContext[Id] =
+    PureContext.build(V1, useNewPowPrecision = true).evaluationContext(Common.emptyBlockchainEnvironment())
+  val evaluatorV1: EvaluatorV1[Id] = new EvaluatorV1[Id]()
 }
 
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
@@ -93,7 +92,7 @@ class ScriptEvaluatorBenchmark {
 
 @State(Scope.Benchmark)
 class NestedBlocks {
-  val context: EvaluationContext[NoContext, Id] = pureEvalContext
+  val context: EvaluationContext[Id] = pureEvalContext
 
   val expr: EXPR = {
     val blockCount = 300
@@ -107,8 +106,9 @@ class NestedBlocks {
 
 @State(Scope.Benchmark)
 class Base58Perf {
-  val context: EvaluationContext[NoContext, Id] =
-    Monoid.combine(pureEvalContext, CryptoContext.build(Global, version).evaluationContext)
+  val context: EvaluationContext[Id] =
+    Monoid.combine(PureContext.build(V1, useNewPowPrecision = true), CryptoContext.build(Global, version))
+      .evaluationContext(Common.emptyBlockchainEnvironment())
 
   val encode: EXPR = {
     val base58Count = 120
@@ -150,8 +150,8 @@ class Base58Perf {
 
 @State(Scope.Benchmark)
 class Signatures {
-  val context: EvaluationContext[NoContext, Id] =
-    Monoid.combine(pureEvalContext, CryptoContext.build(Global, version).evaluationContext)
+  val context: EvaluationContext[Id] =
+    Monoid.combine(PureContext.build(V1, useNewPowPrecision = true), CryptoContext.build(Global, version)).evaluationContext(Common.emptyBlockchainEnvironment())
 
   val expr: EXPR = {
     val sigCount = 20
@@ -191,7 +191,7 @@ class Signatures {
 
 @State(Scope.Benchmark)
 class Concat {
-  val context: EvaluationContext[NoContext, Id] = pureEvalContext
+  val context: EvaluationContext[Id] = pureEvalContext
 
   private val Steps = 180
 
@@ -218,7 +218,7 @@ class Concat {
 
 @State(Scope.Benchmark)
 class Median {
-  val context: EvaluationContext[NoContext, Id] = PureContext.build(V4, useNewPowPrecision = true).evaluationContext
+  val context: EvaluationContext[Id] = PureContext.build(V4, useNewPowPrecision = true).evaluationContext(Common.emptyBlockchainEnvironment())
 
   val randomElements: Array[EXPR] =
     (1 to 10000).map { _ =>
@@ -260,8 +260,8 @@ class Median {
 
 @State(Scope.Benchmark)
 class SigVerify32Kb {
-  val context: EvaluationContext[NoContext, Id] =
-    Monoid.combine(PureContext.build(V4, useNewPowPrecision = true).evaluationContext, CryptoContext.build(Global, V4).evaluationContext)
+  val context: EvaluationContext[Id] =
+    Monoid.combine(PureContext.build(V4, useNewPowPrecision = true), CryptoContext.build(Global, V4)).evaluationContext(Common.emptyBlockchainEnvironment())
 
   val expr: EXPR = {
     val (privateKey, publicKey) = curve25519.generateKeypair
@@ -281,11 +281,11 @@ class SigVerify32Kb {
 
 @State(Scope.Benchmark)
 class ListRemoveByIndex {
-  val context: EvaluationContext[NoContext, Id] =
+  val context: EvaluationContext[Id] =
     Monoid.combine(
-      PureContext.build(V4, useNewPowPrecision = true).evaluationContext,
-      CryptoContext.build(Global, V4).evaluationContext
-    )
+      PureContext.build(V4, useNewPowPrecision = true),
+      CryptoContext.build(Global, V4)
+    ).evaluationContext(Common.emptyBlockchainEnvironment())
 
   val list: ARR = ARR(Vector.fill(1000)(CONST_LONG(Long.MaxValue)), limited = true).explicitGet()
 

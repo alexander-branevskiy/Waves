@@ -88,8 +88,8 @@ object UtilsEvaluator {
       )
       ctx  = BlockchainContext.build(ds, environment, fixUnicodeFunctions = true, useNewPowPrecision = true, fixBigScriptField = true)
       call = ContractEvaluator.buildSyntheticCall(ContractScriptCompactor.decompact(script.expr.asInstanceOf[DApp]), expr)
-      limitedResult <- EvaluatorV2
-        .applyLimitedCoeval(
+      (log, comp, res) = EvaluatorV2
+        .applyLimited(
           call,
           LogExtraInfo(),
           limit,
@@ -99,23 +99,21 @@ object UtilsEvaluator {
           newMode = blockchain.newEvaluatorMode,
           checkConstructorArgsTypes = true
         )
-        .value()
-        .leftMap { case (err, _, log) => InvokeRejectError(err.message, log) }
-      (evaluated, usedComplexity, log) <- limitedResult match {
-        case (eval: EVALUATED, unusedComplexity, log) => Right((eval, limit - unusedComplexity, log))
-        case (_: EXPR, _, log)                        => Left(InvokeRejectError(s"Calculation complexity limit exceeded", log))
+      result <- res match {
+        case Right(eval) => Right((eval, comp, log))
+        case _           => Left(InvokeRejectError(s"Calculation complexity limit exceeded", log))
       }
       rootScriptResult <- ScriptResult
-        .fromObj(ctx, ByteStr.empty, evaluated, ds.stdLibVersion, 0)
+        .fromObj(ctx, ByteStr.empty, result._1, ds.stdLibVersion, 0)
         .bimap(
           _ => Right(InvokeScriptResult.empty),
           { r =>
             val actions = StructuredCallableActions(r.actions, blockchain)
-            val check   = checkActions(actions, ds.stdLibVersion, address, usedComplexity, invoke, limitedExecution = false, limit, log)
-            (check *> actionsToScriptResult(actions, usedComplexity, invoke, log)).resultE
+            val check   = checkActions(actions, ds.stdLibVersion, address, result._2, invoke, limitedExecution = false, limit, log)
+            (check *> actionsToScriptResult(actions, result._2, invoke, log)).resultE
           }
         )
         .merge
       scriptResult = environment.currentDiff.scriptResults.values.fold(InvokeScriptResult.empty)(_ |+| _) |+| rootScriptResult
-    } yield (evaluated, usedComplexity, log, scriptResult)
+    } yield (result._1, result._2, log, scriptResult)
 }

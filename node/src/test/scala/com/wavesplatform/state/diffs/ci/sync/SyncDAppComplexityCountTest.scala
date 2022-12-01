@@ -21,6 +21,7 @@ import com.wavesplatform.transaction.smart.InvokeScriptTransaction.Payment
 import com.wavesplatform.transaction.smart.script.ScriptCompiler
 import com.wavesplatform.transaction.smart.{InvokeTransaction, SetScriptTransaction}
 import com.wavesplatform.transaction.{Transaction, TxHelpers}
+import org.scalactic.source.Position
 
 class SyncDAppComplexityCountTest extends PropSpec with WithDomain {
   import DomainPresets.*
@@ -165,7 +166,7 @@ class SyncDAppComplexityCountTest extends PropSpec with WithDomain {
       reject: Boolean = false,
       sequentialCalls: Boolean = false,
       invokeExpression: Boolean = false
-  ): Unit = {
+  )(implicit pos: Position): Unit = {
     val (preparingTxs, invokeTx, asset, lastCallingDApp) =
       scenario(dAppCount, withPayment, withThroughPayment, withThroughTransfer, withVerifier, raiseError, sequentialCalls, invokeExpression)
     assertDiffEi(
@@ -210,7 +211,9 @@ class SyncDAppComplexityCountTest extends PropSpec with WithDomain {
 
         val totalPortfolios = if (exceeding || raiseError) basePortfolios else basePortfolios |+| additionalPortfolios
 
-        diff.portfolios.filter(_._2 != overlappedPortfolio) shouldBe totalPortfolios.filter(_._2 != overlappedPortfolio)
+        diff.portfolios
+          .filter(_._2 != overlappedPortfolio)
+        .filterNot(_._2.isEmpty) shouldBe totalPortfolios.filter(_._2 != overlappedPortfolio)
       }
     }
   }

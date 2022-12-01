@@ -32,14 +32,13 @@ abstract class DBState extends ScorexLogging {
   AddressScheme.current = new AddressScheme { override val chainId: Byte = 'W' }
 
   lazy val environment = new WavesEnvironment(
-    AddressScheme.current.chainId,
-    Coeval.raiseError(new NotImplementedError("`tx` is not implemented")),
-    Coeval(levelDBWriter.height),
-    levelDBWriter,
-    null,
-    DirectiveSet.contractDirectiveSet,
-    ByteStr.empty
-  )
+    ???,
+    ???,
+      ByteStr.empty,
+  DirectiveSet.contractDirectiveSet,
+  ) {
+    override def blockchain: Blockchain = ???
+  }
 
   @TearDown
   def close(): Unit = {

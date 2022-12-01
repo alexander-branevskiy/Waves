@@ -51,7 +51,7 @@ class SyncInvokeActionsTest extends PropSpec with WithDomain {
            | func default() = {
            |   strict assetId = Address(base58'$dApp2Address').invoke("default", [], [])
            |   [
-           |     ScriptTransfer(i.caller, 1000, assetId.exactAs[ByteVector])
+           |     ScriptTransfer(i.caller, 700, assetId.exactAs[ByteVector])
            |   ]
            | }
          """.stripMargin
@@ -62,15 +62,15 @@ class SyncInvokeActionsTest extends PropSpec with WithDomain {
            | func default() = {
            |   let issue   = Issue("name", "", 1000, 4, true, unit, 0)
            |   let assetId = issue.calculateAssetId()
-           |   ([issue, ScriptTransfer(i.caller, 1000, assetId)], assetId)
+           |   ([issue, ScriptTransfer(i.caller, 900, assetId)], assetId)
            | }
          """.stripMargin
       )
       d.appendBlock(setScript(dApp1Signer, dApp1), setScript(dApp2Signer, dApp2))
       d.appendAndAssertSucceed(invoke(dApp1Address, fee = invokeFee(issues = 1)))
-      d.liquidDiff.portfolios(dApp1Address).assets.head._2 shouldBe 0
-      d.liquidDiff.portfolios(dApp2Address).assets.head._2 shouldBe 0
-      d.liquidDiff.portfolios(defaultAddress).assets.head._2 shouldBe 1000
+      d.liquidDiff.portfolios(dApp1Address).assets.head._2 shouldBe 200
+      d.liquidDiff.portfolios(dApp2Address).assets.head._2 shouldBe 100
+      d.liquidDiff.portfolios(defaultAddress).assets.head._2 shouldBe 700
     }
   }
 

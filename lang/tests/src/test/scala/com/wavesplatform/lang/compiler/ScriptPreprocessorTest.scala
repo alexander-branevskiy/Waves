@@ -3,13 +3,13 @@ package com.wavesplatform.lang.compiler
 import cats.Id
 import cats.implicits.*
 import cats.kernel.Monoid
+import com.wavesplatform.lang.Common
 import com.wavesplatform.lang.directives.values.V3
 import com.wavesplatform.lang.directives.{Directive, DirectiveParser}
 import com.wavesplatform.lang.script.ScriptPreprocessor
 import com.wavesplatform.lang.v1.CTX
 import com.wavesplatform.lang.v1.compiler.ExpressionCompiler
 import com.wavesplatform.lang.v1.compiler.Terms.{CONST_BOOLEAN, EVALUATED}
-import com.wavesplatform.lang.v1.evaluator.Contextful.NoContext
 import com.wavesplatform.lang.v1.evaluator.EvaluatorV1
 import com.wavesplatform.lang.v1.evaluator.EvaluatorV1.*
 import com.wavesplatform.lang.v1.evaluator.ctx.impl.PureContext
@@ -18,7 +18,7 @@ import com.wavesplatform.lang.v1.testing.ScriptGenParser
 import com.wavesplatform.test.*
 
 class ScriptPreprocessorTest extends PropSpec with ScriptGenParser {
-  private val evaluator = new EvaluatorV1[Id, NoContext]()
+  private val evaluator = new EvaluatorV1[Id]()
 
   private def processAndEval(src: String, libraries: Map[String, String]): Either[String, EVALUATED] =
     for {
@@ -30,9 +30,9 @@ class ScriptPreprocessorTest extends PropSpec with ScriptGenParser {
 
   private def eval(code: String): Either[String, EVALUATED] = {
     val untyped  = Parser.parseExpr(code).get.value
-    val ctx: CTX[NoContext] = Monoid.combineAll(Seq(PureContext.build(V3, useNewPowPrecision = true)))
+    val ctx: CTX = Monoid.combineAll(Seq(PureContext.build(V3, useNewPowPrecision = true)))
     val typed    = ExpressionCompiler(ctx.compilerContext, untyped)
-    typed.flatMap(v => evaluator[EVALUATED](ctx.evaluationContext, v._1).leftMap(_.toString))
+    typed.flatMap(v => evaluator[EVALUATED](ctx.evaluationContext(Common.emptyBlockchainEnvironment()), v._1).leftMap(_.toString))
   }
 
   property("multiple libraries") {

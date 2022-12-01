@@ -12,22 +12,20 @@ import com.wavesplatform.lang.script.{ContractScript, Script}
 import com.wavesplatform.lang.v1.CTX
 import com.wavesplatform.lang.v1.evaluator.ctx.impl.waves.WavesContext
 import com.wavesplatform.lang.v1.evaluator.ctx.impl.{CryptoContext, PureContext}
-import com.wavesplatform.lang.v1.traits.Environment
 
 import scala.collection.mutable
 
 class TestCompiler(version: StdLibVersion) {
   private lazy val baseCompilerContext =
-    PureContext.build(version, useNewPowPrecision = true).withEnvironment[Environment] |+|
-      CryptoContext.build(Global, version).withEnvironment[Environment]
+    PureContext.build(version, useNewPowPrecision = true) |+|
+      CryptoContext.build(Global, version)
 
-  private lazy val compilerContext =
-    (baseCompilerContext |+|
-      WavesContext.build(Global, DirectiveSet(version, Account, DAppType).explicitGet(), fixBigScriptField = true)).compilerContext
+  lazy val dappContext: CTX =
+    baseCompilerContext |+|
+      WavesContext.build(Global, DirectiveSet(version, Account, DAppType).explicitGet(), fixBigScriptField = true)
 
-  lazy val expressionContext: CTX[Environment] =
+  private lazy val expressionContext: CTX =
     WavesContext.build(Global, DirectiveSet(version, Account, Expression).explicitGet(), fixBigScriptField = true)
-
   private lazy val expressionCompilerContext =
     (baseCompilerContext |+|
       expressionContext).compilerContext
@@ -44,7 +42,7 @@ class TestCompiler(version: StdLibVersion) {
   ): Either[String, DApp] =
     ContractCompiler.compile(
       script,
-      compilerContext,
+      dappContext.compilerContext,
       version,
       allowIllFormedStrings = allowIllFormedStrings,
       needCompaction = compact,
@@ -64,13 +62,19 @@ class TestCompiler(version: StdLibVersion) {
   def compileExpressionE(script: String, allowIllFormedStrings: Boolean = false, checkSize: Boolean = true): Either[String, ExprScript] =
     ExpressionCompiler
       .compile(script, expressionCompilerContext, allowIllFormedStrings)
-      .map(s => ExprScript(version, s._1, checkSize = checkSize).explicitGet())
+      .map(s =>
+        ExprScript(
+          version,
+          s._1,
+          checkSize = checkSize
+        ).explicitGet()
+      )
 
   def compileAsset(script: String): Script =
     ExprScript(version, ExpressionCompiler.compile(script, assetCompilerContext).explicitGet()._1).explicitGet()
 
   def compileFreeCall(script: String): ExprScript = {
-    val expr = ContractCompiler.compileFreeCall(script, compilerContext, version).explicitGet()
+    val expr = ContractCompiler.compileFreeCall(script, dappContext.compilerContext, version).explicitGet()
     ExprScript(version, expr, isFreeCall = true).explicitGet()
   }
 }
