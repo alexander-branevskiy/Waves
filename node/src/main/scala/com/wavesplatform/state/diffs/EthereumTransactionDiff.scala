@@ -50,7 +50,7 @@ object EthereumTransactionDiff {
     resultEi.getOrElse(Diff.empty)
   }
 
-  def apply(blockchain: Blockchain, currentBlockTs: Long, limitedExecution: Boolean)(e: EthereumTransaction): TracedResult[ValidationError, Diff] = {
+  def apply(height: Int, blockchain: Blockchain, currentBlockTs: Long, limitedExecution: Boolean)(e: EthereumTransaction): TracedResult[ValidationError, Diff] = {
     val baseDiff = e.payload match {
       case et: EthereumTransaction.Transfer =>
         for {
@@ -66,7 +66,7 @@ object EthereumTransactionDiff {
         for {
           _          <- checkLeadingZeros(e, blockchain)
           invocation <- TracedResult(ei.toInvokeScriptLike(e, blockchain))
-          diff       <- InvokeScriptTransactionDiff(blockchain, currentBlockTs, limitedExecution)(invocation)
+          diff       <- InvokeScriptTransactionDiff(height, blockchain, currentBlockTs, limitedExecution)(invocation)
           result     <- TransactionDiffer.assetsVerifierDiff(blockchain, invocation, verify = true, diff, Int.MaxValue)
         } yield result
     }

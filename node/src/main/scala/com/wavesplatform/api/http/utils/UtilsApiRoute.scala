@@ -25,6 +25,7 @@ import com.wavesplatform.transaction.TxValidationError.{GenericError, InvokeReje
 import com.wavesplatform.transaction.smart.script.ScriptCompiler
 import com.wavesplatform.transaction.smart.script.trace.TraceStep
 import com.wavesplatform.utils.Time
+import monix.eval.Coeval
 import monix.execution.Scheduler
 import play.api.libs.json.*
 
@@ -276,6 +277,16 @@ object UtilsApiRoute {
       request: JsObject,
       trace: Boolean,
       maxTxErrorLogSize: Int
+  ): JsObject = evaluate(evaluateScriptComplexityLimit, Coeval.evalOnce(blockchain.height), blockchain, address, request, trace, maxTxErrorLogSize)
+
+  def evaluate(
+      evaluateScriptComplexityLimit: Int,
+      height: Coeval[Int],
+      blockchain: Blockchain,
+      address: Address,
+      request: JsObject,
+      trace: Boolean,
+      maxTxErrorLogSize: Int
   ): JsObject = {
     val scriptInfo = blockchain.accountScript(address).getOrElse(throw new RuntimeException(s"There is no script on '$address'"))
     val pk         = scriptInfo.publicKey
@@ -296,12 +307,21 @@ object UtilsApiRoute {
 
     val apiResult = exprE.flatMap { exprE =>
       val evaluated = for {
-        expr                      <- exprE
-        (result, complexity, log, scriptResult) <- UtilsEvaluator.executeExpression(blockchain, script, address, pk, evaluateScriptComplexityLimit)(expr)
+        expr <- exprE
+        (result, complexity, log, scriptResult) <- UtilsEvaluator.executeExpression(
+          height,
+          blockchain,
+          script,
+          address,
+          pk,
+          evaluateScriptComplexityLimit
+        )(
+          expr
+        )
       } yield Json.obj(
         "result"       -> ScriptValuesJson.serializeValue(result),
         "complexity"   -> complexity,
-          "stateChanges" -> scriptResult
+        "stateChanges" -> scriptResult
       ) ++ (if (trace) Json.obj(TraceStep.logJson(log)) else Json.obj())
       evaluated.leftMap {
         case e: InvokeRejectError => Json.obj("error" -> ApiError.ScriptExecutionError.Id, "message" -> e.toStringWithLog(maxTxErrorLogSize))

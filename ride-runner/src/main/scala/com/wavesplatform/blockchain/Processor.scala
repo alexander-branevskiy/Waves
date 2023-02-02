@@ -21,7 +21,7 @@ import com.wavesplatform.storage.RequestsStorage
 import com.wavesplatform.storage.RequestsStorage.RequestKey
 import com.wavesplatform.storage.actions.AffectedTags
 import com.wavesplatform.utils.ScorexLogging
-import monix.eval.Task
+import monix.eval.{Coeval, Task}
 import monix.execution.Scheduler
 import play.api.libs.json.{JsNumber, JsObject}
 
@@ -95,7 +95,7 @@ class BlockchainProcessor(
       // ^ It's not true, I see that unnecessary calls more than regular 10x
       val r =
         if (accumulatedChanges.newHeight == h) accumulatedChanges
-        else accumulatedChanges.withAffectedTags(AffectedTags(storage.keySet.toSet))
+        else accumulatedChanges.withAffectedTags(AffectedTags(storage.keySet.toSet)) // TODO
 
       // TODO Affect scripts if height is increased
 //      val r = accumulatedChanges.withAffectedTags(blockchainStorage.taggedHeight.affectedTags)
@@ -217,12 +217,12 @@ class BlockchainProcessor(
     accumulatedChanges = ProcessResult(affectedScripts = accumulatedChanges.affectedScripts -- affectedScripts.map(_.key))
 
     val r = Task
-      .parTraverseUnordered(affectedScripts)(runScript(_, hasCaches = true))
+      .parTraverseUnordered(affectedScripts)(runScript(_, height = height, hasCaches = true))
       .as(())
       .executeOn(runScriptsScheduler)
 
     val start = System.nanoTime()
-    r.tapEval(_ => Task.now(RideRunnerMetrics.rideScriptRunOnHeightTime(forceAll).update(System.nanoTime() - start)))
+    r.tapEval(_ => Task.now(RideRunnerMetrics.rideScriptRunOnHeightTime(forceAll).update((System.nanoTime() - start).toDouble)))
   }
 
   override def hasLocalBlockAt(height: Height, id: ByteStr): Option[Boolean] = blockchainStorage.blockHeaders.getLocal(height).map(_.id() == id)
@@ -312,17 +312,19 @@ class BlockchainProcessor(
 
   override def removeBlocksFrom(height: Height): Unit = blockchainStorage.blockHeaders.removeFrom(height)
 
-  private def runScript(script: RestApiScript, hasCaches: Boolean): Task[JsObject] = {
+  private def runScript(script: RestApiScript, height: Int, hasCaches: Boolean): Task[JsObject] = {
     val key = script.key
     Task {
       val prev = script.lastResult
 
       val refreshed = rideScriptRunTime.withTag("has-caches", hasCaches).measure {
-        script.refreshed(settings.enableTraces, settings.evaluateScriptComplexityLimit, settings.maxTxErrorLogSize, runScriptsScheduler)
+        script.refreshed(settings.enableTraces, settings.evaluateScriptComplexityLimit, settings.maxTxErrorLogSize, height, runScriptsScheduler)
       }
       storage.put(key, refreshed)
 
       val lastResult = refreshed.lastResult
+      // TODO comment
+//      log.info(f"addr=${key._1}; request=${key._2}; result=$lastResult")
       if ((lastResult \ "error").isEmpty) {
         val complexity = lastResult.value("complexity").as[Int]
         val result     = lastResult.value("result").as[JsObject].value("value")
@@ -365,7 +367,7 @@ class BlockchainProcessor(
                   // TODO #19 Change/move an error to an appropriate layer
                   Task.raiseError(ApiException(CustomValidationError(s"Address $address is not dApp")))
 
-                case _ => runScript(RestApiScript(address, blockchainStorage, request), hasCaches = false)
+                case _ => runScript(RestApiScript(address, blockchainStorage, request), blockchainStorage.height, hasCaches = false)
               }
               .doOnFinish { _ => Task(inProcess.remove(key)) }
           }
@@ -389,9 +391,10 @@ object BlockchainProcessor {
 case class RestApiScript(address: Address, blockchain: Blockchain, request: JsObject, lastResult: JsObject) {
   def key: RequestKey = (address, request)
 
-  def refreshed(trace: Boolean, evaluateScriptComplexityLimit: Int, maxTxErrorLogSize: Int, scheduler: Scheduler): RestApiScript = {
+  def refreshed(trace: Boolean, evaluateScriptComplexityLimit: Int, maxTxErrorLogSize: Int, height: Int, scheduler: Scheduler): RestApiScript = {
     val result = UtilsApiRoute.evaluate(
       evaluateScriptComplexityLimit,
+      Coeval.now(height),
       blockchain,
       address,
       request,

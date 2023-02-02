@@ -47,7 +47,7 @@ object InvokeScriptTransactionDiff {
     r.issues ++ r.invokes.flatMap(s => allIssues(s.stateChanges))
   }
 
-  def apply(blockchain: Blockchain, blockTime: Long, limitedExecution: Boolean)(
+  def apply(height: Int, blockchain: Blockchain, blockTime: Long, limitedExecution: Boolean)(
       tx: InvokeScriptTransactionLike
   ): TracedResult[ValidationError, Diff] = {
 
@@ -169,6 +169,7 @@ object InvokeScriptTransactionDiff {
           pk,
           _,
           tx,
+          height,
           CompositeBlockchain(blockchain, invocationDiff),
           blockTime,
           isSyncCall = false,
@@ -183,7 +184,7 @@ object InvokeScriptTransactionDiff {
 
           val dataEntries  = actions.collect { case d: DataOp => InvokeDiffsCommon.dataItemToEntry(d) }
           val dataCount    = dataEntries.length
-          val dataSize     = DataTxValidator.invokeWriteSetSize(blockchain, dataEntries)
+          val dataSize     = DataTxValidator.invokeWriteSetSize(height, blockchain, dataEntries)
           val actionsCount = actions.length - dataCount
           val balanceActionsCount = actions.collect {
             case tr: AssetTransfer => tr

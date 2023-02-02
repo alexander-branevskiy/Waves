@@ -45,6 +45,11 @@ object UtilsEvaluator {
   def executeExpression(blockchain: Blockchain, script: Script, address: Address, pk: PublicKey, limit: Int)(
       expr: EXPR
   ): Either[ValidationError, (EVALUATED, Int, Log[Id], InvokeScriptResult)] =
+    executeExpression(Coeval.evalOnce(blockchain.height), blockchain, script, address, pk, limit)(expr)
+
+  def executeExpression(height: Coeval[Int], blockchain: Blockchain, script: Script, address: Address, pk: PublicKey, limit: Int)(
+      expr: EXPR
+  ): Either[ValidationError, (EVALUATED, Int, Log[Id], InvokeScriptResult)] =
     for {
       ds <- DirectiveSet(script.stdLibVersion, Account, DAppType).leftMap(GenericError(_))
       invoke = new InvokeScriptTransactionLike {
@@ -66,7 +71,7 @@ object UtilsEvaluator {
       environment = new DAppEnvironment(
         AddressScheme.current.chainId,
         Coeval.raiseError(new IllegalStateException("No input entity available")),
-        Coeval.evalOnce(blockchain.height),
+        height,
         blockchain,
         Coproduct[Tthis](Recipient.Address(ByteStr(address.bytes))),
         ds,
@@ -95,8 +100,8 @@ object UtilsEvaluator {
           limit,
           ctx,
           script.stdLibVersion,
-          correctFunctionCallScope = blockchain.checkEstimatorSumOverflow,
-          newMode = blockchain.newEvaluatorMode,
+          correctFunctionCallScope = blockchain.checkEstimatorSumOverflow(height.value()),
+          newMode = blockchain.newEvaluatorMode(height.value()),
           checkConstructorArgsTypes = true
         )
         .value()
@@ -111,7 +116,7 @@ object UtilsEvaluator {
           _ => Right(InvokeScriptResult.empty),
           { r =>
             val actions = StructuredCallableActions(r.actions, blockchain)
-            val check   = checkActions(actions, ds.stdLibVersion, address, usedComplexity, invoke, limitedExecution = false, limit, log)
+            val check   = checkActions(height.value(), actions, ds.stdLibVersion, address, usedComplexity, invoke, limitedExecution = false, limit, log)
             (check *> actionsToScriptResult(actions, usedComplexity, invoke, log)).resultE
           }
         )

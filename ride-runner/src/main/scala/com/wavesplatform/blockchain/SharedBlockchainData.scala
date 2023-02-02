@@ -33,7 +33,8 @@ class SharedBlockchainData[TagT](settings: Settings, persistentCaches: Persisten
   val vrf = new VrfStorage(settings.caches.vrf, blockchainApi, persistentCaches.vrf, height)
 
   // Ride: wavesBalance, height, lastBlock
-  def height: Int = blockHeaders.last.height
+  def height: Int  = blockHeaders.last.height
+  val taggedHeight = new HeightTagsStorage[TagT](height)
 
   // No way to get this from blockchain updates
   var activatedFeatures =

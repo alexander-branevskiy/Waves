@@ -14,7 +14,7 @@ import com.wavesplatform.metrics.TxProcessingStats
 import com.wavesplatform.metrics.TxProcessingStats.TxTimerExt
 import com.wavesplatform.state.InvokeScriptResult.ErrorMessage
 import com.wavesplatform.state.diffs.invoke.InvokeScriptTransactionDiff
-import com.wavesplatform.state.{Blockchain, Diff, InvokeScriptResult, NewTransactionInfo, Portfolio, Sponsorship}
+import com.wavesplatform.state.{Blockchain, Diff, Height, InvokeScriptResult, NewTransactionInfo, Portfolio, Sponsorship}
 import com.wavesplatform.transaction.*
 import com.wavesplatform.transaction.Asset.{IssuedAsset, Waves}
 import com.wavesplatform.transaction.TxValidationError.*
@@ -27,11 +27,22 @@ import com.wavesplatform.transaction.transfer.{MassTransferTransaction, Transfer
 import play.api.libs.json.Json
 
 object TransactionDiffer {
+
   def apply(prevBlockTs: Option[Long], currentBlockTs: Long, verify: Boolean = true)(
       blockchain: Blockchain,
       tx: Transaction
   ): TracedResult[ValidationError, Diff] =
-    validate(prevBlockTs, currentBlockTs, verify, limitedExecution = false)(blockchain, tx) match {
+    apply(prevBlockTs, currentBlockTs, verify, blockchain.height, blockchain, tx)
+
+  def apply(
+      prevBlockTs: Option[Long],
+      currentBlockTs: Long,
+      verify: Boolean,
+      height: Int,
+      blockchain: Blockchain,
+      tx: Transaction
+  ): TracedResult[ValidationError, Diff] =
+    validate(prevBlockTs, currentBlockTs, verify, limitedExecution = false)(height, blockchain, tx) match {
       case isFailedTransaction((complexity, scriptResult, trace, attributes)) if acceptFailed(blockchain) =>
         TracedResult(failedTransactionDiff(blockchain, tx, complexity, scriptResult), trace, attributes)
       case result =>
@@ -42,7 +53,7 @@ object TransactionDiffer {
       blockchain: Blockchain,
       tx: Transaction
   ): TracedResult[ValidationError, Diff] =
-    validate(prevBlockTs, currentBlockTs, verify = true, limitedExecution = false)(blockchain, tx)
+    validate(prevBlockTs, currentBlockTs, verify = true, limitedExecution = false)(blockchain.height, blockchain, tx)
 
   def limitedExecution(prevBlockTimestamp: Option[Long], currentBlockTimestamp: Long, unlimited: Boolean, verify: Boolean = true)(
       blockchain: Blockchain,
@@ -50,6 +61,7 @@ object TransactionDiffer {
   ): TracedResult[ValidationError, Diff] = {
     val limitedExecution = if (unlimited) false else transactionMayFail(tx) && acceptFailed(blockchain)
     validate(prevBlockTimestamp, currentBlockTimestamp, verify = verify, limitedExecution)(
+      blockchain.height,
       blockchain,
       tx
     )
@@ -62,6 +74,7 @@ object TransactionDiffer {
     *   validate common checks, proofs and asset scripts execution. If `skipFailing` is true asset scripts will not be executed
     */
   private def validate(prevBlockTimestamp: Option[Long], currentBlockTimestamp: Long, verify: Boolean, limitedExecution: Boolean)(
+      height: Int,
       blockchain: Blockchain,
       tx: Transaction
   ): TracedResult[ValidationError, Diff] = {
@@ -70,7 +83,7 @@ object TransactionDiffer {
       _               <- validateCommon(blockchain, tx, prevBlockTimestamp, currentBlockTimestamp, verify).traced
       _               <- validateFunds(blockchain, tx).traced
       verifierDiff    <- if (runVerifiers) verifierDiff(blockchain, tx) else Right(Diff.empty).traced
-      transactionDiff <- transactionDiff(blockchain, tx, verifierDiff, currentBlockTimestamp, limitedExecution)
+      transactionDiff <- transactionDiff(height, blockchain, tx, verifierDiff, currentBlockTimestamp, limitedExecution)
       remainingComplexity = if (limitedExecution) ContractLimits.FailFreeInvokeComplexity - transactionDiff.scriptsComplexity.toInt else Int.MaxValue
       _ <- validateBalance(blockchain, tx.tpe, transactionDiff).traced.leftMap { err =>
         def acceptFailedByBalance(): Boolean =
@@ -173,6 +186,7 @@ object TransactionDiffer {
     stats.balanceValidation.measureForType(txType)(BalanceDiffValidation(blockchain)(diff).as(()))
 
   private def transactionDiff(
+      height: Int,
       blockchain: Blockchain,
       tx: Transaction,
       initDiff: Diff,
@@ -184,7 +198,7 @@ object TransactionDiffer {
         tx match {
           case gtx: GenesisTransaction           => GenesisTransactionDiff(blockchain.height)(gtx).traced
           case ptx: PaymentTransaction           => PaymentTransactionDiff(blockchain)(ptx).traced
-          case ci: InvokeTransaction             => InvokeScriptTransactionDiff(blockchain, currentBlockTs, limitedExecution)(ci)
+          case ci: InvokeTransaction             => InvokeScriptTransactionDiff(height, blockchain, currentBlockTs, limitedExecution)(ci)
           case etx: ExchangeTransaction          => ExchangeTransactionDiff(blockchain)(etx).traced
           case itx: IssueTransaction             => AssetTransactionsDiff.issue(blockchain)(itx).traced
           case rtx: ReissueTransaction           => AssetTransactionsDiff.reissue(blockchain, currentBlockTs)(rtx).traced
@@ -199,7 +213,7 @@ object TransactionDiffer {
           case sstx: SetScriptTransaction        => SetScriptTransactionDiff(blockchain)(sstx).traced
           case sstx: SetAssetScriptTransaction   => AssetTransactionsDiff.setAssetScript(blockchain)(sstx).traced
           case stx: SponsorFeeTransaction        => AssetTransactionsDiff.sponsor(blockchain)(stx).traced
-          case et: EthereumTransaction           => EthereumTransactionDiff(blockchain, currentBlockTs, limitedExecution)(et)
+          case et: EthereumTransaction           => EthereumTransactionDiff(height, blockchain, currentBlockTs, limitedExecution)(et)
           case _                                 => UnsupportedTransactionType.asLeft.traced
         }
       }
@@ -297,12 +311,15 @@ object TransactionDiffer {
         case e: EthereumTransaction => EthereumTransactionDiff.meta(blockchain)(e)
         case _                      => Diff.empty
       }
-      Diff.withTransactions(
-        Vector(NewTransactionInfo(tx, affectedAddresses, applied = false, spentComplexity)),
-        portfolios = portfolios,
-        scriptResults = scriptResult.fold(Map.empty[ByteStr, InvokeScriptResult])(sr => Map(tx.id() -> sr)),
-        scriptsComplexity = spentComplexity
-      ).combineF(ethereumMetaDiff).getOrElse(Diff.empty)
+      Diff
+        .withTransactions(
+          Vector(NewTransactionInfo(tx, affectedAddresses, applied = false, spentComplexity)),
+          portfolios = portfolios,
+          scriptResults = scriptResult.fold(Map.empty[ByteStr, InvokeScriptResult])(sr => Map(tx.id() -> sr)),
+          scriptsComplexity = spentComplexity
+        )
+        .combineF(ethereumMetaDiff)
+        .getOrElse(Diff.empty)
     }
   }
 

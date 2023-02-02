@@ -375,6 +375,7 @@ class DAppEnvironment(
       )
       (diff, evaluated, remainingActions, remainingBalanceActions, remainingAssetActions, remainingPayments, remainingData, remainingDataSize) <-
         InvokeScriptDiff( // This is a recursive call
+          h.value(),
           mutableBlockchain,
           blockchain.settings.functionalitySettings.allowInvalidReissueInSameBlockUntilTimestamp + 1,
           limitedExecution,

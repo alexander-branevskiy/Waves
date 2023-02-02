@@ -70,12 +70,12 @@ object DataTxValidator extends TxValidator[DataTransaction] {
   }
 
   // For invokes
-  def invokeWriteSetSize(blockchain: Blockchain, entries: Seq[DataEntry[?]]): Int =
-    if (blockchain.isFeatureActivated(BlockchainFeatures.RideV6)) realUserPayloadSize(entries)
+  def invokeWriteSetSize(height: Int, blockchain: Blockchain, entries: Seq[DataEntry[?]]): Int =
+    if (blockchain.isFeatureActivated(BlockchainFeatures.RideV6, height)) realUserPayloadSize(entries)
     else entries.map(_.toBytes.length).sum // Legacy behavior
 
-  def verifyInvokeWriteSet(blockchain: Blockchain, entries: Seq[DataEntry[?]]): Either[String, Unit] = {
-    val totalDataBytes = invokeWriteSetSize(blockchain, entries)
+  def verifyInvokeWriteSet(height: Int, blockchain: Blockchain, entries: Seq[DataEntry[?]]): Either[String, Unit] = {
+    val totalDataBytes = invokeWriteSetSize(height: Int, blockchain, entries)
     Either.cond(
       totalDataBytes <= ContractLimits.MaxWriteSetSizeInBytes,
       (),

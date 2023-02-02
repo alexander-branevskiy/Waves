@@ -45,6 +45,7 @@ object InvokeScriptDiff {
   import stats.TxTimerExt
 
   def apply(
+      height: Int,
       blockchain: Blockchain,
       blockTime: Long,
       limitedExecution: Boolean,
@@ -271,6 +272,7 @@ object InvokeScriptDiff {
                     pk,
                     storingComplexity.toInt,
                     tx,
+                    height,
                     CompositeBlockchain(blockchain, diff),
                     blockTime,
                     isSyncCall = true,
@@ -342,7 +344,7 @@ object InvokeScriptDiff {
                 case ScriptResultV3(dataItems, transfers, unusedComplexity) =>
                   val dataEntries  = dataItems.map(InvokeDiffsCommon.dataItemToEntry)
                   val dataCount    = dataItems.length
-                  val dataSize     = DataTxValidator.invokeWriteSetSize(blockchain, dataEntries)
+                  val dataSize     = DataTxValidator.invokeWriteSetSize(height, blockchain, dataEntries)
                   val actionsCount = transfers.length
                   process(dataItems ::: transfers, unusedComplexity, actionsCount, actionsCount, 0, dataCount, dataSize, unit)
                 case ScriptResultV4(actions, unusedComplexity, ret) =>
@@ -354,7 +356,7 @@ object InvokeScriptDiff {
                     case lc: LeaseCancel   => lc
                   }.length
                   val assetActionsCount = actions.length - dataCount - balanceActionsCount
-                  val dataSize          = DataTxValidator.invokeWriteSetSize(blockchain, dataEntries)
+                  val dataSize          = DataTxValidator.invokeWriteSetSize(height, blockchain, dataEntries)
                   val actionsCount      = actions.length - dataCount
                   process(actions, unusedComplexity, actionsCount, balanceActionsCount, assetActionsCount, dataCount, dataSize, ret)
                 case _: IncompleteResult if limitedExecution =>

@@ -163,6 +163,7 @@ object InvokeDiffsCommon {
       dAppPublicKey: PublicKey,
       storingComplexity: Int,
       tx: InvokeScriptLike,
+      height: Int,
       blockchain: Blockchain,
       blockTime: Long,
       isSyncCall: Boolean,
@@ -174,7 +175,7 @@ object InvokeDiffsCommon {
     val verifierCount          = if (blockchain.hasPaidVerifier(tx.sender.toAddress)) 1 else 0
     val additionalScriptsCount = actions.complexities.size + verifierCount + tx.paymentAssets.count(blockchain.hasAssetScript)
     for {
-      _ <- checkActions(actions, version, dAppAddress, storingComplexity, tx, limitedExecution, totalComplexityLimit, log)
+      _ <- checkActions(blockchain.height, actions, version, dAppAddress, storingComplexity, tx, limitedExecution, totalComplexityLimit, log)
       feeDiff <-
         if (isSyncCall)
           TracedResult.wrapValue(Map[Address, Portfolio]())
@@ -202,7 +203,7 @@ object InvokeDiffsCommon {
       complexityLimit =
         if (limitedExecution) ContractLimits.FailFreeInvokeComplexity - storingComplexity
         else Int.MaxValue
-      compositeDiff <- foldActions(blockchain, blockTime, tx, dAppAddress, dAppPublicKey)(actions.list, paymentsAndFeeDiff, complexityLimit)
+      compositeDiff <- foldActions(height, blockchain, blockTime, tx, dAppAddress, dAppPublicKey)(actions.list, paymentsAndFeeDiff, complexityLimit)
         .leftMap {
           case failed: FailedTransactionError => failed.addComplexity(storingComplexity).withLog(log)
           case other                          => other
@@ -216,6 +217,7 @@ object InvokeDiffsCommon {
   }
 
   def checkActions(
+      height: Int,
       actions: StructuredCallableActions,
       version: StdLibVersion,
       dAppAddress: Address,
@@ -227,7 +229,7 @@ object InvokeDiffsCommon {
   ): TracedResult[ValidationError, Unit] = {
     import actions.*
     for {
-      _ <- TracedResult(checkDataEntries(blockchain, tx, dataEntries, version)).leftMap(
+      _ <- TracedResult(checkDataEntries(height, blockchain, tx, dataEntries, version)).leftMap(
         FailedTransactionError.dAppExecution(_, storingComplexity, log)
       )
       _ <- TracedResult(checkLeaseCancels(leaseCancelList)).leftMap(FailedTransactionError.dAppExecution(_, storingComplexity, log))
@@ -235,7 +237,7 @@ object InvokeDiffsCommon {
         checkScriptActionsAmount(version, actions.list, transferList, leaseList, leaseCancelList, dataEntries)
           .leftMap(FailedTransactionError.dAppExecution(_, storingComplexity, log))
       )
-      _ <- TracedResult(checkSelfPayments(dAppAddress, blockchain, tx, version, transferList))
+      _ <- TracedResult(checkSelfPayments(dAppAddress, height, blockchain, tx, version, transferList))
         .leftMap(FailedTransactionError.dAppExecution(_, storingComplexity, log))
       _ <- TracedResult(
         Either.cond(transferList.map(_.amount).forall(_ >= 0), (), FailedTransactionError.dAppExecution("Negative amount", storingComplexity, log))
@@ -314,12 +316,13 @@ object InvokeDiffsCommon {
 
   private def checkSelfPayments(
       dAppAddress: Address,
+      height: Int,
       blockchain: Blockchain,
       tx: InvokeScriptLike,
       version: StdLibVersion,
       transfers: List[AssetTransfer]
   ): Either[String, Unit] =
-    if (blockchain.disallowSelfPayment && version >= V4)
+    if (blockchain.disallowSelfPayment(height) && version >= V4)
       if (tx.payments.nonEmpty && tx.sender.toAddress == dAppAddress)
         "DApp self-payment is forbidden since V4".asLeft[Unit]
       else if (transfers.exists(_.address.bytes == ByteStr(dAppAddress.bytes)))
@@ -348,7 +351,7 @@ object InvokeDiffsCommon {
     else
       Right(())
 
-  private def checkDataEntries(blockchain: Blockchain, tx: InvokeScriptLike, dataEntries: Seq[DataEntry[?]], stdLibVersion: StdLibVersion) =
+  private def checkDataEntries(height: Int, blockchain: Blockchain, tx: InvokeScriptLike, dataEntries: Seq[DataEntry[?]], stdLibVersion: StdLibVersion) =
     for {
       _ <- Either.cond(
         dataEntries.length <= ContractLimits.MaxWriteSetSize,
@@ -381,7 +384,7 @@ object InvokeDiffsCommon {
         }
         .toLeft(())
 
-      _ <- DataTxValidator.verifyInvokeWriteSet(blockchain, dataEntries)
+      _ <- DataTxValidator.verifyInvokeWriteSet(height, blockchain, dataEntries)
     } yield ()
 
   private def checkLeaseCancels(leaseCancels: Seq[LeaseCancel]): Either[String, Unit] = {
@@ -438,6 +441,7 @@ object InvokeDiffsCommon {
     }
 
   private def foldActions(
+      height: Int,
       sblockchain: Blockchain,
       blockTime: Long,
       tx: InvokeScriptLike,
@@ -483,7 +487,7 @@ object InvokeDiffsCommon {
                     TracedResult(r)
                   } { case AssetScriptInfo(script, complexity) =>
                     val assetVerifierDiff =
-                      if (blockchain.disallowSelfPayment) nextDiff
+                      if (blockchain.disallowSelfPayment(height)) nextDiff
                       else
                         nextDiff.withPortfolios(
                           Map(

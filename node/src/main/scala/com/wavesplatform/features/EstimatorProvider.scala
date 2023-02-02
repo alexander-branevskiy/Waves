@@ -25,8 +25,9 @@ object EstimatorProvider {
     def checkEstimationOverflow: Boolean =
       b.height >= b.settings.functionalitySettings.estimationOverflowFixHeight
 
-    def checkEstimatorSumOverflow: Boolean =
-      b.height >= b.settings.functionalitySettings.estimatorSumOverflowFixHeight
+    def checkEstimatorSumOverflow: Boolean = checkEstimatorSumOverflow(b.height)
+    def checkEstimatorSumOverflow(height: Int): Boolean =
+      height >= b.settings.functionalitySettings.estimatorSumOverflowFixHeight
   }
 
   implicit class EstimatorWavesSettingsExt(ws: WavesSettings) {
